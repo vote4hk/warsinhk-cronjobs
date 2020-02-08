@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
+  "scripts": {
+    "start": "node run.js"
+  },
   "dependencies": {
     "bluebird": "^3.7.2",
     "csv-parse": "^4.8.5",
