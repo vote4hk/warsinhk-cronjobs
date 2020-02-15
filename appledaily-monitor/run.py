@@ -158,8 +158,7 @@ def get_article(url):
 
 
 print("Fetching Links")
-links = ["https://hk.news.appledaily.com/china/20200215/FCWW2A647C7F43BCT63RWXIZ2A/"]
-#links = get_news_articles()
+links = get_news_articles()
 print("%d links available" % len(links))
 print(links)
 print_memory()
