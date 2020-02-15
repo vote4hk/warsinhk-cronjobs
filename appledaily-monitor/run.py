@@ -1,13 +1,30 @@
 import requests
-from bs4 import BeautifulSoup
-from pyjsparser import parse
+from bs4 import BeautifulSoup,  SoupStrainer
 import json
 import hashlib
 import os
 import urllib
 import multiprocessing
 from time import sleep
+import sys
 
+
+
+def get_memory():
+    """ Look up the memory usage, return in MB. """
+    proc_file = '/proc/{}/status'.format(os.getpid())
+    scales = {'KB': 1024.0, 'MB': 1024.0 * 1024.0}
+    with open(proc_file, 'rU') as f:
+        for line in f:
+            if 'VmHWM:' in line:
+                fields = line.split()
+                size = int(fields[1])
+                scale = fields[2].upper()
+                return size*scales[scale]/scales['MB']
+    return 0.0 
+
+def print_memory():
+    print("Peak: %f MB" % (get_memory()))
 
 def run_query(query):
     ADMIN_SECRET = os.getenv('ADMIN_SECRET')
@@ -18,7 +35,10 @@ def run_query(query):
     }
     j = {"query": query, "operationName": "MyQuery"}
     resp = requests.post(ENDPOINT, data=json.dumps(j), headers=HEADERS)
-    return resp.json()
+    j = resp.json()
+    if "data" not in j:
+        print(query)
+    return j
 
 def send_to_telegram_channel(item):
     text = "%s\n%s" % (item["title"], item["link"])
@@ -29,7 +49,7 @@ def send_to_telegram_channel(item):
 
 
 def check_existence(url):
-    key = hashlib.md5(url.encode('utf-8')).hexdigest()
+    key = hashlib.md5(url.encode()).hexdigest()
     query = """
     query MyQuery {
       __typename
@@ -96,15 +116,20 @@ def get_news_articles():
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
     r = requests.get(url, headers=headers)
     r.encoding = "utf-8"
-    soup = BeautifulSoup(r.content, features="html.parser")
-    elements = soup.find_all("div", {"class": "text"})
+    only_div = SoupStrainer("div", {"class": "text"})
+    soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_div)
+    elements = list(soup.find_all("div", {"class": "text"}))
+    soup.decompose()
     links = []
     for element in elements:
         a = element.find('a')
         href = a['href']
         links.append(href)
-    pool = multiprocessing.Pool(5)
+    links = links
+    pool = multiprocessing.Pool(2,maxtasksperchild=1)
     result = pool.map_async(retrieve_url, links).get()
+    pool.close()
+    pool.join()
     result = [l for l in result if "/local/" in l or "/international/" in l or "/china/" in l or "/breaking/" in l]
     return result
 
@@ -113,75 +138,58 @@ def get_article(url):
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
     r = requests.get(url, headers=headers)
     r.encoding = "utf-8"
-    soup = BeautifulSoup(r.content, features="html.parser")
-    scripts = soup.find_all('script')
-    contents = []
-    for script in scripts:
-        t = script.text
-
-        if "content_elements" in t:
-            d = parse(t)["body"]
-            for x in d:
-                d_type = x.get("type", None)
-                if d_type != "ExpressionStatement":
-                    continue
-                expression = x["expression"]
-                left = expression["left"]
-                left_object = expression["left"].get("object", None)
-                if left_object is None:
-                    continue
-                left_object_name = left_object.get("name", None)
-                if left_object_name != "Fusion":
-                    continue
-                left_prop = left.get("property", None)
-                if left_prop is None:
-                    continue
-                prop_name = left_prop.get('name', None)
-                if prop_name != "globalContent":
-                    continue
-                right = expression["right"]
-                right_props = right["properties"]
-                for s in right_props:
-                    if s["key"]["value"] == "content_elements":
-                        v = s["value"]
-                        for e in v["elements"]:
-                            for p in e["properties"]:
-                               if p["key"]["value"] == "content": 
-                                   contents.append(p["value"]["value"])
+    only_div = SoupStrainer("div", {"id": "articleBody"})
+    only_meta = SoupStrainer("meta")
+    soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_div)
+    meta_soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_meta)
     item = {}
-    item["text_orig"] = "<br/>".join(contents)
-    item["text"] = json.dumps(item["text_orig"])[1:-2]
+    contents = []
+    for div in soup.find("div"):
+        contents.append(div.text)
+    item["text_orig"] = "\n".join(contents)
+    item["text"] = json.dumps(item["text_orig"])[1:-1]
     item["source"] = "appledaily"
-    item["title"] = soup.find("meta",  property="og:title")["content"]
-    item["image"] = soup.find("meta",  property="og:image")["content"]
-    item["link"] = soup.find("meta",  property="og:url")["content"]
-    item["key"] = hashlib.md5(item["link"].encode()).hexdigest()
+    item["title"] = meta_soup.find("meta",  property="og:title")["content"]
+    item["image"] = meta_soup.find("meta",  property="og:image")["content"]
+    item["link"] = meta_soup.find("meta",  property="og:url")["content"]
+    item["key"] = hashlib.md5(url.encode()).hexdigest()
     item["date"] = (lambda x:"%s-%s-%s"% (x[0:4], x[4:6],x[6:8]))(item["link"].split('/')[-3])
     return item
 
 
 print("Fetching Links")
-links = get_news_articles()
+links = ["https://hk.news.appledaily.com/china/20200215/FCWW2A647C7F43BCT63RWXIZ2A/"]
+#links = get_news_articles()
 print("%d links available" % len(links))
-#items = [get_article(link) for link in links[0:100]]
 print(links)
+print_memory()
 k = 0
 for link in links:
-    if k > 30:
+    if k > 10:
         print("send enough")
         break
     is_existed = check_existence(link)
     if is_existed:
         print("%s already exists" % (link))
         continue
+    print(link)
+    sleep(1)
     item = get_article(link)
+    print_memory()
     result = upsert_news([item])
+    print(result)
     if not related(item["text_orig"], item["title"]):
         print("%s not related" % (link))
         continue
-    new_rows = result["data"]["insert_wars_News"]["returning"]
-    if len(new_rows) > 0:
-        send_to_telegram_channel(item)
-        k = k + 1
-    sleep(0.5)
-    
+    if "data" in result:
+        new_rows = result["data"]["insert_wars_News"]["returning"]
+        if len(new_rows) > 0:
+            send_to_telegram_channel(item)
+            k = k + 1
+        else:
+            print("already existed")
+    else:
+        print(result)
+
+print("finished")
+print_memory()
