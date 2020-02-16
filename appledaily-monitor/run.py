@@ -284,7 +284,7 @@ def fetch_rthk():
 
 
 CMD = os.getenv('CMD')
-if CMD is None:
-    fetch_apple_daily()
-else:
+if CMD == "rthk":
     fetch_rthk()
+else:
+    fetch_apple_daily()
