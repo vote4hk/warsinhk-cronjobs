@@ -99,7 +99,7 @@ def upsert_news(news):
 
 
 def related(text, title):
-    keywords = ["武漢", "湖北", "肺炎", "衞生", "疫情", "確診個案", "口罩"]
+    keywords = ["武漢", "湖北", "肺炎", "衞生", "疫情", "確診個案", "口罩", "國家衛健委疾控局", "新冠肺炎", "檢疫", "新型冠狀病毒", "新型肺炎"]
     for keyword in keywords:
        if keyword in text or keyword in title:
            return True
@@ -157,38 +157,134 @@ def get_article(url):
     return item
 
 
-print("Fetching Links")
-links = get_news_articles()
-print("%d links available" % len(links))
-print(links)
-print_memory()
-k = 0
-for link in links:
-    if k > 10:
-        print("send enough")
-        break
-    is_existed = check_existence(link)
-    if is_existed:
-        print("%s already exists" % (link))
-        continue
-    print(link)
-    sleep(1)
-    item = get_article(link)
-    print_memory()
-    result = upsert_news([item])
-    print(result)
-    if not related(item["text_orig"], item["title"]):
-        print("%s not related" % (link))
-        continue
-    if "data" in result:
-        new_rows = result["data"]["insert_wars_News"]["returning"]
-        if len(new_rows) > 0:
-            send_to_telegram_channel(item)
-            k = k + 1
-        else:
-            print("already existed")
-    else:
-        print(result)
 
-print("finished")
-print_memory()
+def fetch_apple_daily():
+    print("Fetching Links")
+    links = get_news_articles()
+    print("%d links available" % len(links))
+    print(links)
+    print_memory()
+    k = 0
+    for link in links:
+        if k > 10:
+            print("send enough")
+            break
+        is_existed = check_existence(link)
+        if is_existed:
+            print("%s already exists" % (link))
+            continue
+        print(link)
+        sleep(1)
+        item = get_article(link)
+        print_memory()
+        result = upsert_news([item])
+        print(result)
+        if not related(item["text_orig"], item["title"]):
+            print("%s not related" % (link))
+            continue
+        if "data" in result:
+            new_rows = result["data"]["insert_wars_News"]["returning"]
+            if len(new_rows) > 0:
+                send_to_telegram_channel(item)
+                k = k + 1
+            else:
+                print("already existed")
+        else:
+            print(result)
+
+    print("finished")
+    print_memory()
+
+
+def get_rthk_news_article():
+    url = "https://news.rthk.hk/rthk/ch/latest-news.htm"
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+    r = requests.get(url, headers=headers)
+    r.encoding = "utf-8"
+    only_div = SoupStrainer("div", {"class": "ns2-row-inner"})
+    soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_div)
+    elements = list(soup.find_all("div", {"class": "ns2-row-inner"}))
+    soup.decompose()
+    links = []
+    for element in elements:
+        a = element.find("a")
+        if a is not None:
+            l = a.get('href', None)
+            if l is None:
+                continue
+            l = l.split('?')[0]
+            links.append(l)
+    return links
+
+
+def get_rthk_article(url):
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+    r = requests.get(url, headers=headers)
+    r.encoding = "utf-8"
+    only_div = SoupStrainer("div", {"class": "itemFullText"})
+    only_div_date = SoupStrainer("div", {"class": "createddate"})
+    only_meta = SoupStrainer("meta")
+
+    date_soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_div_date)
+    soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_div)
+    meta_soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_meta)
+    item = {}
+    contents = []
+    for div in soup.find_all("div"):
+        contents.append(div.text.strip())
+    item["text_orig"] = "\n".join(contents)
+    item["text"] = json.dumps(item["text_orig"])[1:-1]
+    item["source"] = "rthk"
+    item["title"] = meta_soup.find("meta",  property="og:title")["content"]
+    meta_image =  meta_soup.find("meta",  property="og:image")
+    item["image"] = "" if meta_image is None else meta_image.get("content")
+    item["link"] = url
+    item["key"] = hashlib.md5(url.encode()).hexdigest()
+    date_div = date_soup.find("div")
+    item["date"] = "" if date_div is None else date_div.text.split(' ')[0]
+    return item
+
+
+
+def fetch_rthk():
+    print("Fetching Links")
+    links = get_rthk_news_article()
+    print("%d links available" % len(links))
+    print(links)
+    print_memory()
+    k = 0
+    for link in links:
+        if k > 10:
+            print("send enough")
+            break
+        is_existed = check_existence(link)
+        if is_existed:
+            print("%s already exists" % (link))
+            continue
+        print(link)
+        sleep(1)
+        item = get_rthk_article(link)
+        print(item)
+        result = upsert_news([item])
+        if not related(item["text_orig"], item["title"]):
+            print("%s not related" % (link))
+            continue
+        if "data" in result:
+            new_rows = result["data"]["insert_wars_News"]["returning"]
+            if len(new_rows) > 0:
+                send_to_telegram_channel(item)
+                k = k + 1
+            else:
+                print("already existed")
+        else:
+            print(result)
+
+    print("finished")
+    print_memory()
+
+
+CMD = os.getenv('CMD')
+if CMD is None:
+    fetch_apple_daily()
+else:
+    fetch_rthk()
