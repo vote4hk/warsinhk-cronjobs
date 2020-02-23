@@ -7,7 +7,9 @@ import urllib
 import multiprocessing
 from time import sleep
 import sys
-
+from datetime import datetime
+from dateutil.tz import tzoffset
+from datetime import datetime, timedelta
 
 
 def get_memory():
@@ -55,12 +57,18 @@ def check_existence(url):
       __typename
       wars_News(where: {key: {_eq: "%s"}}, limit: 1) {
         key
+        date
       }
     }
 
     """ % key
     result = run_query(query)
-    return len(result["data"]["wars_News"]) > 0
+    data = result["data"]["wars_News"]
+    existed = len(data) > 0
+    d = None
+    if existed:
+        d = data[0]["date"]
+    return existed, d
 
 
 def upsert_news(news):
@@ -169,7 +177,7 @@ def fetch_apple_daily():
         if k > 10:
             print("send enough")
             break
-        is_existed = check_existence(link)
+        is_existed, _ = check_existence(link)
         if is_existed:
             print("%s already exists" % (link))
             continue
@@ -257,7 +265,7 @@ def fetch_rthk():
         if k > 10:
             print("send enough")
             break
-        is_existed = check_existence(link)
+        is_existed, _ = check_existence(link)
         if is_existed:
             print("%s already exists" % (link))
             continue
@@ -283,8 +291,76 @@ def fetch_rthk():
     print_memory()
 
 
+def get_icable_article(url):
+    r = requests.get(url)
+    only_div = SoupStrainer("div", {"class": "video_content_area"})
+    only_meta = SoupStrainer("meta")
+    soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_div)
+    meta_soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_meta)
+    contents = [d.text for d in soup.find_all("div", {"class": "video_content"})]
+    date_div = soup.find("div", {"class": "video_date"})
+    item_date = "1900/01/01" if date_div is None else date_div.text.strip().split(" ")[0]
+    item_date = "{0}-{1}-{2}".format(*item_date.split("/"))
+    item = {}
+    item["text_orig"] = "\n".join(contents)
+    item["text"] = json.dumps(item["text_orig"])[1:-1]
+    item["source"] = "icable"
+    item["title"] = meta_soup.find("meta",  property="og:title")["content"]
+    item["image"] = meta_soup.find("meta",  property="og:image")["content"]
+    item["link"] = meta_soup.find("meta",  property="og:url")["content"]
+    item["key"] = hashlib.md5(url.encode()).hexdigest()
+    item["date"] = item_date
+    return item
+
+
+def fetch_icable():
+    print("Fetching Links")
+    all_news = requests.get("http://cablenews.i-cable.com/ci/news/listing/api").json()
+    links = ["http://cablenews.i-cable.com/ci/videopage/news/%s" % (news["id"]) for news in all_news]
+    print(len(all_news))
+    offset = tzoffset(None, 8 * 3600)  # offset in seconds
+    cutoff_date = (datetime.now(offset).date() - timedelta(days=1)).strftime("%Y-%m-%d")
+    print(cutoff_date)
+    print_memory()
+    k = 0
+    for link in links:
+        if k > 10:
+            print("send enough")
+            break
+        is_existed, d = check_existence(link)
+        if is_existed:
+            print("%s already exists" % (link))
+            print(d, cutoff_date)
+            if d < cutoff_date:
+                break
+            continue
+        print(link)
+        sleep(1)
+        item = get_icable_article(link)
+        if item["date"] < cutoff_date:
+            break
+        result = upsert_news([item])
+        if not related(item["text_orig"], item["title"]):
+            print("%s not related" % (link))
+            continue
+        if "data" in result:
+            new_rows = result["data"]["insert_wars_News"]["returning"]
+            if len(new_rows) > 0:
+                send_to_telegram_channel(item)
+                k = k + 1
+            else:
+                print("already existed")
+        else:
+            print(result)
+    print("finished")
+    print_memory()
+
+
+
 CMD = os.getenv('CMD')
 if CMD == "rthk":
     fetch_rthk()
+elif CMD == "icable":
+    fetch_icable()
 else:
     fetch_apple_daily()
