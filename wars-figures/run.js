@@ -91,7 +91,8 @@ async function main() {
     const index = spreadsheetRecords.findIndex(sr => sr[0] === r[0])
 
     if (index < 0) {
-      r.push(moment().tz("Asia/Hong_Kong").format("YYYY-MM-DD HH:mm:ss"))
+      // insert into exact position to avoid there is new fields
+      r.splice(9, 0, moment().tz("Asia/Hong_Kong").format("YYYY-MM-DD HH:mm:ss"))
       spreadsheetRecords.push(r)
     } else {
       spreadsheetRecords[index] = r
