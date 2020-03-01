@@ -9,6 +9,34 @@ from datetime import datetime
 import base64
 import json
 import base64
+import urllib.parse
+from time import sleep
+
+
+def get_gps_by_location(district, address):
+    address_encoded = urllib.parse.quote_plus(address)
+    district_encoded = urllib.parse.quote_plus(district)
+    location = None
+    key = os.getenv("MAP_API_KEY", "")
+    for i in range(0, 3):
+        url = "https://maps.googleapis.com/maps/api/geocode/json?address=" + district_encoded + "," + address_encoded + "&key=" + key
+        r = requests.get(url)
+        j = r.json()
+        if j.get("status", "") == "REQUEST_DENIED":
+            sleep(0.5)
+            continue
+        print(url)
+        if "results" in j:
+            results = j["results"]
+            if len(results) == 0:
+                break
+            geom = results[0].get("geometry", None)
+            if geom is not None:
+                loc = geom["location"]
+                location = (loc["lat"], loc["lng"])
+                break
+    return (address, location)
+
 
 
 try:
@@ -60,6 +88,9 @@ try:
     #District Level
     for spreadsheet_id, district in [("1AKYtYvNJldF4TTwv2lokfV-96YGZ7KOHr76Qss8ntSI", "Kowloon City"), ("1hLku-fHBFRN_pGfn7W4qT-bEM5s0XUTn372SAqjIDsg", "Sham Shui Po")]:
         output_rows = rows_by_district[district]
+        district_zh = output_rows[0][1]
+        if district_zh == "九龍城":
+            district_zh = "九龍"
         print("Updating %s with %d records" % (district, len(output_rows)))
         sheet_name = "%s Only" % district
         gps_sheet_name = "%s GPS" % district
@@ -82,6 +113,33 @@ try:
             'values': [[last_updated]]
         }
         service.spreadsheets().values().update(spreadsheetId=spreadsheet_id, body=data, range=range_name, valueInputOption='USER_ENTERED').execute()
+ 
+        print("Appending address")
+        print("Reading address")
+        address_range = "%s GPS!$A2:A" % district
+        result = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range=address_range).execute()
+        existing_address_rows = [r[0] for r in result.get('values', [])]
+        all_addresses = [r[3] for r in output_rows]
+        new_addresses = []
+        for a in all_addresses:
+            if a not in existing_address_rows:
+                new_addresses.append(a)
+        new_addresses = new_addresses
+        print(district_zh, len(new_addresses))
+        print(new_addresses)
+        append_address_rows = []
+        for new_addr in new_addresses:
+            address, location = get_gps_by_location(district_zh, new_addr)
+            if location is None:
+                continue
+            r = [address, location[0], location[1]]
+            append_address_rows.append(r)
+        print(append_address_rows)
+        service.spreadsheets().values().append(
+                  spreadsheetId=spreadsheet_id,
+                  range=address_range,
+                  body={"values": append_address_rows},valueInputOption="USER_ENTERED").execute()
+
      
 
 except OSError as e:
