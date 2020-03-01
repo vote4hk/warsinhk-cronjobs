@@ -187,14 +187,14 @@ def fetch_baidu():
             china_cases.append(d)
         case.update(last_updated_dict)
         china_cases.append(case)
-    #print(upsert_area_within_china(china_cases))
+    print(upsert_area_within_china(china_cases))
     international_cases = []
     for case in case_outside_list:
         case['area'] = toTraditional(case['area'])
         case.update(parse_int_in_dict(case))
         case.update(last_updated_dict)
         international_cases.append(case)
-    #print(upsert_international_area(international_cases))
+    print(upsert_international_area(international_cases))
     print(last_updated)
     upload_to_google_sheet(china_cases, international_cases)
     print("Finished")
