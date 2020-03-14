@@ -42,8 +42,8 @@ def run_query(query):
         print(query)
     return j
 
-def send_to_telegram_channel(item):
-    text = "%s\n%s" % (item["title"], item["link"])
+def send_to_telegram_channel(item, title_prefix=""):
+    text = "%s\n%s" % (title_prefix + item["title"], item["link"])
     qs = urllib.parse.urlencode({'chat_id': os.getenv("TELEGRAM_CHANNEL_ID"), 'text':text})
     url = "https://api.telegram.org/bot%s/sendMessage?%s" % (os.getenv("TELEGRAM_TOKEN"), qs)   
     print(url)
@@ -356,11 +356,74 @@ def fetch_icable():
     print_memory()
 
 
+def fetch_nowtv():
+    print("Fetching nowtv")
+    r = requests.get("https://news.now.com/home/tracker/detail?catCode=123&topicId=1031")
+    only_link = SoupStrainer("a")
+    only_content = SoupStrainer("div", {"itemprop": "articleBody"})
+    only_time = SoupStrainer("time", {"class": "published"})
+    soup = BeautifulSoup(r.content, features="html.parser", parse_only=only_link)
+    links = soup.find_all("a")
+    print_memory()
+    k = 0
+    for link in links:
+        if "clearfix" in link.get("class", ""):
+            href = "https://news.now.com" + link["href"]
+            img = link.find("img")["src"]
+            desc_node = link.find("div", {"class": "newsDecs"})
+            if k > 10:
+                print("send enough")
+                break
+            is_existed, d = check_existence(href)
+            if is_existed:
+                print("%s already exists" % (href))
+                continue
+
+            print(link)
+            sleep(1)
+            print(desc_node)
+            title = desc_node.find("div", {"class": "newsTitle"}).text
+            r2 = requests.get(href)
+            content_soup = BeautifulSoup(r2.content, features="html.parser", parse_only=only_content)
+            time_soup = BeautifulSoup(r2.content, features="html.parser", parse_only=only_time)
+            published_date = time_soup.find("time")["datetime"].split(" ")[0]
+            d = content_soup.find("div")
+            contents = d.text.strip()
+            item = {}
+            item["text_orig"] = contents
+            item["text"] = json.dumps(item["text_orig"])[1:-1]
+            item["source"] = "nowtv"
+            item["title"] = title
+            item["image"] = img
+            item["link"] = href
+            item["key"] = hashlib.md5(href.encode()).hexdigest()
+            item["date"] = published_date
+            print(item)
+            result = upsert_news([item])
+            if not related(item["text_orig"], item["title"]):
+                print("%s not related" % (link))
+                continue
+            if "data" in result:
+                new_rows = result["data"]["insert_wars_News"]["returning"]
+                if len(new_rows) > 0:
+                    send_to_telegram_channel(item, "【Now新聞台】")
+                    k = k + 1
+                else:
+                    print("already existed")
+            else:
+                print(result)
+    print("finished")
+    print_memory()
+
+
+    
 
 CMD = os.getenv('CMD')
 if CMD == "rthk":
     fetch_rthk()
 elif CMD == "icable":
     fetch_icable()
+elif CMD == "nowtv":
+    fetch_nowtv()
 else:
     fetch_apple_daily()
