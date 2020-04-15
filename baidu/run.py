@@ -71,6 +71,9 @@ def upsert_area_within_china(areas):
         city: "{city}"
       }}
     """
+    for a in areas:
+        if "curConfirm" not in a:
+            a["curConfirm"] = 0
     objects = ",\n".join([template.format(**area) for area in areas])
     objects = "[%s]" % objects
     query = """
