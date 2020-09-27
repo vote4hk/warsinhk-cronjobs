@@ -199,7 +199,8 @@ def fetch_baidu():
         international_cases.append(case)
     print(upsert_international_area(international_cases))
     print(last_updated)
-    upload_to_google_sheet(china_cases, international_cases)
+    # stop updating to google spreadsheet
+    # upload_to_google_sheet(china_cases, international_cases)
     print("Finished")
     print_memory()
 
