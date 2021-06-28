@@ -24,7 +24,7 @@ fi
 
 COMMIT_FILE="auto_commited"
 
-DATETIME=(date +%Y%d%m%H%M%S)
+DATETIME=$(date +%Y%d%m%H%M%S)
 echo "$DATETIME" >> "$COMMIT_DIR$COMMIT_FILE"
 
 git config user.name "$GIT_EMAIL"
