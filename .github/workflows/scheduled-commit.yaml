@@ -1,5 +1,10 @@
+# To prevent the repository inactive that will prevent the github actions to run after 60 days
+# We generate a commit monthly to a file that make the repository "active"
+
 name: Touch auto_commited
-on: push
+on:
+  schedule:
+    - cron: "0 0 1 * *" # This is running monthly
 jobs:
   report:
     runs-on: ubuntu-latest
@@ -9,10 +14,10 @@ jobs:
           ref: master
       - name: Update commit file
         run: date +%Y%m%s%H%M%S > auto_commited
-      - name: Commit report
+      - name: Commit
         run: |
           git config --global user.name 'Deploy Bot'
           git config --global user.email 'deploy-bot@users.noreply.github.com'
           git add auto_commited
-          git commit -m "Automated report"
+          git commit -m "Automated commit"
           git push
