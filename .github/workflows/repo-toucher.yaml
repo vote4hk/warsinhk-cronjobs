@@ -4,7 +4,7 @@ name: Repo Toucher
 on:
   push
 #  schedule:
-#    - cron: "0 * * * *"
+#    - cron: "* * * * *"
 
 jobs:
   build:
@@ -21,6 +21,6 @@ jobs:
       - name: Run script
         run: ./commit.sh
         env:
-          BRANCH: nandi/repo-toucher
+          BRANCH: master
 
 
