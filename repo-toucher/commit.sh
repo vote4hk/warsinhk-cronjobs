@@ -27,6 +27,7 @@ COMMIT_FILE="auto_commited"
 DATETIME=$(date +%Y%d%m%H%M%S)
 echo "$DATETIME" >> "$COMMIT_DIR$COMMIT_FILE"
 
+git fetch
 git checkout "origin/$BRANCH"
 git config user.name "$GIT_EMAIL"
 git config user.email "$GIT_EMAIL"
