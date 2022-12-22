@@ -1,35 +1,35 @@
-name: Baidu Global Metrics Update
+# name: Baidu Global Metrics Update
 
-# Run every hour
-on:
-  schedule:
-    - cron: "0 * * * *"
+# # Run every hour
+# on:
+#   schedule:
+#     - cron: "0 * * * *"
 
-jobs:
-  build:
+# jobs:
+#   build:
 
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.8]
-    defaults:
-      run:
-        working-directory: baidu
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-      - name: Run the program
-        run: |
-          python run.py
-        env:
-          ENDPOINT: ${{ secrets.ENDPOINT }}
-          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+#     runs-on: ubuntu-latest
+#     strategy:
+#       matrix:
+#         python-version: [3.8]
+#     defaults:
+#       run:
+#         working-directory: baidu
+#     steps:
+#       - uses: actions/checkout@v2
+#       - name: Set up Python ${{ matrix.python-version }}
+#         uses: actions/setup-python@v2
+#         with:
+#           python-version: ${{ matrix.python-version }}
+#       - name: Install dependencies
+#         run: |
+#           python -m pip install --upgrade pip
+#           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+#       - name: Run the program
+#         run: |
+#           python run.py
+#         env:
+#           ENDPOINT: ${{ secrets.ENDPOINT }}
+#           ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
 
 
